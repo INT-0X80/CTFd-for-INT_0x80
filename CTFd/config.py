@@ -1,7 +1,7 @@
 import os
 
 ##### GENERATE SECRET KEY #####
-with open('.ctfd_secret_key', 'a+') as secret:
+with open(os.path.join(os.path.dirname(__file__),".ctfd_secret_key"), 'a+') as secret:
     secret.seek(0)  # Seek to beginning of file since a+ mode leaves you at the end and w+ deletes the file
     key = secret.read()
     if not key:
