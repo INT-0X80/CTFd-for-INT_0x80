@@ -630,14 +630,14 @@ def export_ctf(segments=None):
     backup = io.BytesIO()
     backup_zip = zipfile.ZipFile(backup, 'w')
 
-    for segment in segments:
-        group = groups[segment]
-        for item in group:
-            result = db[item].all()
-            result_file = io.BytesIO()
-            dataset.freeze(result, format='json', fileobj=result_file)
-            result_file.seek(0)
-            backup_zip.writestr('db/{}.json'.format(item), result_file.read())
+    #for segment in segments:
+    #    group = groups[segment]
+    #    for item in group:
+    #        result = db[item].all()
+    #        result_file = io.BytesIO()
+    #        dataset.freeze(result, format='json', fileobj=result_file)
+    #        result_file.seek(0)
+    #        backup_zip.writestr('db/{}.json'.format(item), result_file.read())
 
     # Backup uploads
     upload_folder = os.path.join(os.path.normpath(app.root_path), get_config('UPLOAD_FOLDER'))
@@ -646,101 +646,27 @@ def export_ctf(segments=None):
             parent_dir = os.path.basename(root)
             backup_zip.write(os.path.join(root, file), arcname=os.path.join('uploads', parent_dir, file))
 
+    # Backup Database files, cause the initial import/backup function do not work properly
+    database_path = get_config('SQLALCHEMY_DATABASE_URI').lstrip('sqlite:/')
+    backup_zip.write('/' + database_path, arcname='ctfd.db')
+
     backup_zip.close()
     backup.seek(0)
     return backup
 
 
 def import_ctf(backup, segments=None, erase=False):
-    side_db = dataset.connect(get_config('SQLALCHEMY_DATABASE_URI'))
-    if segments is None:
-        segments = ['challenges', 'teams', 'both', 'metadata']
-
     if not zipfile.is_zipfile(backup):
         raise TypeError
 
     backup = zipfile.ZipFile(backup)
 
-    groups = {
-        'challenges': [
-            'challenges',
-            'files',
-            'tags',
-            'keys',
-            'hints',
-        ],
-        'teams': [
-            'teams',
-            'tracking',
-            'awards',
-        ],
-        'both': [
-            'solves',
-            'wrong_keys',
-            'unlocks',
-        ],
-        'metadata': [
-            'alembic_version',
-            'config',
-            'pages',
-        ]
-    }
 
-    # Need special handling of metadata
-    if 'metadata' in segments:
-        meta = groups['metadata']
-        segments.remove('metadata')
-        meta.remove('alembic_version')
-
-        for item in meta:
-            table = side_db[item]
-            path = "db/{}.json".format(item)
-            data = backup.open(path).read()
-
-            # Some JSON files will be empty
-            if data:
-                if item == 'config':
-                    saved = json.loads(data)
-                    for entry in saved['results']:
-                        key = entry['key']
-                        value = entry['value']
-                        set_config(key, value)
-
-                elif item == 'pages':
-                    saved = json.loads(data)
-                    for entry in saved['results']:
-                        route = entry['route']
-                        html = entry['html']
-                        page = Pages.query.filter_by(route=route).first()
-                        if page:
-                            page.html = html
-                        else:
-                            page = Pages(route, html)
-                            db.session.add(page)
-                        db.session.commit()
-
-    for segment in segments:
-        group = groups[segment]
-        for item in group:
-            table = side_db[item]
-            path = "db/{}.json".format(item)
-            data = backup.open(path).read()
-            if data:
-                saved = json.loads(data)
-                for entry in saved['results']:
-                    entry_id = entry.pop('id', None)
-                    # This is a hack to get SQlite to properly accept datetime values from dataset
-                    # See Issue #246
-                    if get_config('SQLALCHEMY_DATABASE_URI').startswith('sqlite'):
-                        for k, v in entry.items():
-                            if isinstance(v, six.string_types):
-                                try:
-                                    entry[k] = datetime.datetime.strptime(v, '%Y-%m-%dT%H:%M:%S')
-                                except ValueError as e:
-                                    pass
-                    table.insert(entry)
-            else:
-                continue
+    # Extracting ctfd.db
+    database_path = get_config('SQLALCHEMY_DATABASE_URI').lstrip('sqlite:/')
+    source = backup.open('ctfd.db')
+    target = file('/' + database_path, "wb")
+    shutil.copyfileobj(source, target)
 
     # Extracting files
     files = [f for f in backup.namelist() if f.startswith('uploads/')]
