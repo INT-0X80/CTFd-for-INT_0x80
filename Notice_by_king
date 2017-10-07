@@ -1,0 +1,126 @@
+【Heroku新建应用部署代码】 git init . ; git add . ; git commit -m "test"; git remote add heroku https://git.heroku.com/int0x80.git; git push heroku master;
+【还原配置】 CTFd ==> Admin ==> config ==> Backup ==> Import
+【备份配置】 CTFd ==> Admin ==> config ==> Backup ==> Export （会备份数据库信息和上传的文件）
+【站点本地测试】 heroku local 或者 gunicorn --bind 0.0.0.0:8000 "CTFd:create_app()" 或者 python serve.py
+
+
+【Heroku相关文件】Procfile ==> web: gunicorn -w 4 "CTFd:create_app()"
+				  runtime.txt ==> python-2.7.14
+
+【注意】：编辑题目的时候，如果key中含有特殊字符，请选择static格式，防止影响正则匹配造成服务器错误。
+				key 格式选择 Static ，用户提交的字符串自动转换为小写处理，所以key请改为“小写”！
+				key 格式选择 Regex ,用户提交的字符串会保留大写字母, 此时key的比对 将忽略大小写
+
+1、原项目主要代码都在 CTFd/CTFd 中，CTFd 里面有一些 docker 文件和 prepare.sh、populate.py、serve.py 被我手动删除
+	其中，prepare.sh 可以用来配置本地环境，运行时如果报错：No module named setuptools_ext，手动运行 pip install --upgrade cffi
+ 
+2、requirements.txt 为原项目中的文件，用于自动安装依赖。openshift 自动创建的目录也有该文件，一开始为空
+
+3、wsgi.py是 openshift python 站点的入口文件。文档：https://developers.openshift.com/en/python-flask.html
+
+
+4、nginx 配置方法：
+		文档：http://flask.pocoo.org/docs/0.10/deploying/uwsgi/#configuring-nginx
+
+	1）	在 requirements.txt 所在的目录，运行 uwsgi -s /tmp/uwsgi.sock -w “CTFd:create_app()” 或者 uwsgi --http-socket :8888 -w “CTFd:create_app()”
+
+	2)	
+		server {
+				# listen 80 ;
+				# listen [::]:80 ;
+
+				root /var/www/CTFd/CTFd;
+				server_name test.com;
+
+				location / { try_files $uri @yourapplication; }
+				location @yourapplication {
+					    include uwsgi_params;
+					    uwsgi_pass unix:/tmp/uwsgi.sock;
+				}
+		}
+
+5、Apache配置方法：
+	apt-get install libapache2-mod-wsgi
+
+	<VirtualHost *:80>
+   		ServerName www.example.com
+ 
+		WSGIDaemonProcess python user=www-data group=www-data threads=5
+		WSGIScriptAlias / /var/www/python/wsgi.py
+
+    		<Directory /var/www/python/>
+        		WSGIProcessGroup python
+                	WSGIApplicationGroup %{GLOBAL}
+                	AllowOverride All
+                	Require all granted
+         	</Directory>
+	</VirtualHost>
+
+
+Bug1：	openshift中的python环境有virtenv虚拟环境变量，然后相对路径改变，所以在代码里获取文件的绝对路径
+		diff config_old.py config.py
+
+		4c4
+		< with open('.ctfd_secret_key', 'a+') as secret:
+		---
+		> with open(os.path.join(os.path.dirname(__file__),".ctfd_secret_key"), 'a+') as secret:
+		19c19
+		< HOST = ".ctfd.io"
+		---
+		> HOST = "ctf.int0x80.ml"
+
+
+Bug2：openshift 线上有错误，from sqlalchemy import orm, event, inspect 这一句会提示 ImportError: cannot import name inspect
+		ssh登录，pip install -U sqlalchemy
+
+
+Bug3: 前端代码增加脚注
+	  1) style.css 中增加.row 样式 ... ( 管理员页面未配置)  diff -u style.css_bak CTFd/themes/original/static/css/style.css
+
+		 --- style.css_bak	2016-12-22 01:19:56.742118158 +0800
+		 +++ CTFd/static/css/style.css	2016-12-22 01:19:15.318118362 +0800
+		 @@ -49,6 +49,9 @@
+		  .row > h1{
+				       text-align: center;
+					    }
+		+.row {
+		+margin-bottom:100px;
+		+}
+		 
+		 #challenges{
+				      line-height: 66px;
+
+	
+
+	  2） 前台页面删除自带的footer，换成自定义footer (CTFd/themes/original/templates/base.html)
+                <div style="height:80px;position:fixed;bottom:0;left:0;right:0;background-color:#333;font-family: monospace;">
+                        <div style="font-size:15px;color:#FFF;position:fixed;right:10px;margin-top:8px">
+                                < Powered by <a href="https://github.com/isislab/CTFd">CTFd</a>
+                        </div>
+
+                         <div style="font-size:15px;color:#FFF;position:fixed;left:10px;margin-top:7px">
+                         Maintained by:
+                         </div>
+
+              		<pre style="color:#00FF00;;font-size:6px;line-height:6px;;position:fixed;left:10px;margin-top:25px;width:50%;height:100%;border:0px;background-color:#333;">
+###   #     # #######           ###            #####    ###
+ #    ##    #    #             #   #   #    # #     #  #   #
+ #    # #   #    #            # #   #   #  #  #     # # #   #
+ #    #  #  #    #            #  #  #    ##    #####  #  #  #
+ #    #   # #    #            #   # #    ##   #     # #   # #
+ #    #    ##    #             #   #    #  #  #     #  #   #
+###   #     #    #    #######   ###    #    #  #####    ###
+                         </pre>
+                 </div>
+
+
+	  3) 注释掉管理员页面的footer（又丑又影响操作)   (CTFd/themes/admin/templates/base.html )
+
+                <!--
+                <div class="navbar navbar-bottom footer">
+                        <p class="text-muted text-center">
+                                <a style="text-decoration:none;" href="https://ctfd.io"><sub>Powered by CTFd</sub></a>
+                        </p>
+                </div>
+                -->
+

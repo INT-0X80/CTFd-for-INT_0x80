@@ -53,8 +53,16 @@ docs/_build/
 # PyBuilder
 target/
 
+.DS_Store
+
 *.db
 *.log
 .idea/
 CTFd/static/uploads
+CTFd/uploads
+.data/
 .ctfd_secret_key
+.*.swp
+
+# Vagrant
+.vagrant
