@@ -1,1 +1,1 @@
-web: gunicorn -w 4 "CTFd:create_app()"
+web: gunicorn -w 1 "CTFd:create_app()"
