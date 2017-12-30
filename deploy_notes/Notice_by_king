@@ -22,7 +22,11 @@
 4、nginx 配置方法：
 		文档：http://flask.pocoo.org/docs/0.10/deploying/uwsgi/#configuring-nginx
 
-	1）	在 requirements.txt 所在的目录，运行 uwsgi -s /tmp/uwsgi.sock -w "CTFd:create_app()" 或者 uwsgi --http-socket :8888 -w "CTFd:create_app()"
+	1）	【python版uwsgi】
+			在 requirements.txt 所在的目录，运行 uwsgi -s /tmp/uwsgi.sock -w "CTFd:create_app()" 或者 uwsgi --http-socket :8888 -w "CTFd:create_app()"
+		【系统版uwsgi服务】
+			cp uwsgi.ini /etc/uwsgi/apps-available/
+			service uwsgi restart
 
 	2)	
 		server {
